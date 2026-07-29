@@ -1,0 +1,5 @@
+bin/
+obj/
+appsettings.json
+push-to-github.bat
+*.txt

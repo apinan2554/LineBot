@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LINE Bot Process Flow</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f4f8; padding: 20px; color: #333; }
+        h1 { text-align: center; color: #06c755; margin-bottom: 10px; font-size: 28px; }
+        h2 { color: #2d3748; margin: 30px 0 15px; padding-left: 10px; border-left: 4px solid #06c755; }
+        h3 { color: #4a5568; margin: 20px 0 10px; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 30px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .section { background: #fff; border-radius: 12px; padding: 25px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .flow-diagram { display: flex; flex-direction: column; align-items: center; gap: 0; margin: 20px 0; }
+        .flow-box { padding: 14px 24px; border-radius: 8px; text-align: center; min-width: 280px; font-size: 14px; position: relative; }
+        .flow-start { background: #06c755; color: #fff; border-radius: 30px; }
+        .flow-process { background: #e2e8f0; color: #2d3748; }
+        .flow-decision { background: #fefcbf; color: #744210; border: 2px solid #ecc94b; transform: rotate(0deg); }
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>🤖 LINE Bot Process Flow</h1>
+    <p class="subtitle">ระบบ LINE Bot + AI (OpenRouter) สำหรับขายสินค้าออนไลน์</p>
+
+    <!-- Section 1: Architecture Overview -->
+    <div class="section">
+        <h2>1. ภาพรวมสถาปัตยกรรม (Architecture Overview)</h2>
+        <div class="flow-diagram">
+            <div class="flow-box flow-start">👤 ลูกค้าส่งข้อความผ่าน LINE App</div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-process">☁️ LINE Platform (api.line.me)</div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-process">🔗 Tunnel (Pinggy/localhost.run)<br><small>แปลง public URL → localhost</small></div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-process">💻 Bot Server (localhost:5000)<br><small>.NET 6 Minimal API</small></div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-process">🧠 OpenRouter AI API<br><small>วิเคราะห์ข้อความ + ตอบกลับ</small></div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-process">🖼️ Cloudinary<br><small>รูปภาพสินค้า (HTTPS)</small></div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-start">📱 ลูกค้าได้รับคำตอบ + รูปสินค้าใน LINE</div>
+        </div>
+    </div>
+
+    <!-- Section 2: Setup -->
+    <div class="section">
+        <h2>2. ขั้นตอนการติดตั้ง (Setup)</h2>
+
+        <h3>2.1 สร้าง LINE Channel</h3>
+        <ol style="margin-left:20px; line-height:2;">
+            <li>ไปที่ <a href="https://developers.line.biz/console/" target="_blank">LINE Developers Console</a></li>
+            <li>สร้าง Provider → สร้าง Channel (Messaging API)</li>
+            <li>เก็บ <strong>Channel Secret</strong> (Basic settings)</li>
+            <li>เก็บ <strong>Channel Access Token</strong> (Messaging API → Issue)</li>
+        </ol>
+
+        <h3>2.2 สมัคร OpenRouter</h3>
+        <ol style="margin-left:20px; line-height:2;">
+            <li>ไปที่ <a href="https://openrouter.ai" target="_blank">openrouter.ai</a> สมัครสมาชิก</li>
+            <li>ไปที่ <a href="https://openrouter.ai/keys" target="_blank">Keys</a> สร้าง API Key</li>
+            <li>เลือก Model ที่ต้องการ เช่น <code>openai/gpt-4o-mini</code></li>
+        </ol>
+
+        <h3>2.3 สมัคร Cloudinary</h3>
+        <ol style="margin-left:20px; line-height:2;">
+            <li>ไปที่ <a href="https://cloudinary.com/users/register/free" target="_blank">Cloudinary</a> สมัครฟรี</li>
+            <li>Upload รูปสินค้าผ่าน Media Library</li>
+            <li>Copy URL ของรูป (format: <code>https://res.cloudinary.com/...</code>)</li>
+        </ol>
+
+        <h3>2.4 ไฟล์ Configuration</h3>
+        <pre style="background:#1a202c; color:#a0aec0; padding:15px; border-radius:8px; overflow-x:auto; font-size:13px;"><code>{
+  "LineBot": {
+    "ChannelAccessToken": "ใส่ token จาก LINE Developers",
+    "ChannelSecret": "ใส่ secret จาก LINE Developers"
+  },
+  "OpenRouter": {
+    "ApiKey": "ใส่ API key จาก OpenRouter",
+    "Model": "openai/gpt-4o-mini"
+  }
+}</code></pre>
+    </div>
+
+    <!-- Section 3: Startup -->
+    <div class="section">
+        <h2>3. การเริ่มต้นระบบ (Application Startup)</h2>
+        <div class="flow-diagram">
+            <div class="flow-box flow-start">เปิด Terminal #1</div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-process">cd LineBotLocal<br><code>dotnet run --urls "http://localhost:5000"</code></div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-decision">✅ เห็น "Now listening on: http://localhost:5000"</div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-start">เปิด Terminal #2</div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-process"><code>ssh -p 443 -R0:localhost:5000 a.pinggy.io</code></div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-decision">✅ ได้ URL เช่น https://xxxxx.free.pinggy.net</div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-process">เอา URL + /webhook ไปใส่ LINE Console<br><small>Messaging API → Webhook URL</small></div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-decision">✅ กด Verify → Success</div>
+        </div>
+
+        <h3>Code: Application Startup</h3>
+        <pre style="background:#1a202c; color:#a0aec0; padding:15px; border-radius:8px; overflow-x:auto; font-size:13px;"><code>// อ่าน config
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+
+var config = app.Configuration.GetSection("LineBot");
+var accessToken = config["ChannelAccessToken"] ?? "";
+var channelSecret = config["ChannelSecret"] ?? "";
+
+var orConfig = app.Configuration.GetSection("OpenRouter");
+var orApiKey = orConfig["ApiKey"] ?? "";
+var orModel = orConfig["Model"] ?? "openai/gpt-3.5-turbo";
+
+// ลงทะเบียน endpoint
+app.MapPost("/webhook", async (HttpContext ctx) => { ... });
+app.MapGet("/", () => "LINE Bot is running locally!");
+
+app.Run();</code></pre>
+    </div>
+
+    <!-- Section 4: Webhook Flow -->
+    <div class="section">
+        <h2>4. Webhook Flow (รับข้อความจาก LINE)</h2>
+        <div class="flow-diagram">
+            <div class="flow-box flow-start">LINE ส่ง POST /webhook</div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-process">อ่าน Request Body</div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-decision">🔐 ตรวจ X-Line-Signature<br><small>HMAC-SHA256 verify</small></div>
+            <div style="font-size:20px; color:#e53e3e;">❌ ไม่ตรง → 401 Unauthorized</div>
+            <div style="font-size:24px; color:#06c755;">⬇ ✅ ตรง</div>
+            <div class="flow-box flow-process">Parse JSON → วน loop events[]</div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-decision">ตรวจ event.type == "message" ?</div>
+            <div style="font-size:20px; color:#e53e3e;">❌ ไม่ใช่ → ข้าม</div>
+            <div style="font-size:24px; color:#06c755;">⬇ ✅ ใช่</div>
+            <div class="flow-box flow-process">ดึง replyToken + message</div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-decision">ตรวจ message.type ?</div>
+        </div>
+
+        <h3>Code: Signature Verification</h3>
+        <pre style="background:#1a202c; color:#a0aec0; padding:15px; border-radius:8px; overflow-x:auto; font-size:13px;"><code>// อ่าน body
+using var reader = new StreamReader(ctx.Request.Body);
+var body = await reader.ReadToEndAsync();
+
+// ตรวจ signature
+var signature = ctx.Request.Headers["X-Line-Signature"].ToString();
+if (!string.IsNullOrEmpty(channelSecret) && channelSecret != "YOUR_CHANNEL_SECRET")
+{
+    var hash = HMACSHA256Hash(channelSecret, body);
+    if (signature != hash)
+    {
+        Console.WriteLine("[WARN] Invalid signature");
+        return Results.Unauthorized();
+    }
+}
+
+// HMAC-SHA256 function
+static string HMACSHA256Hash(string secret, string message)
+{
+    var keyBytes = Encoding.UTF8.GetBytes(secret);
+    var msgBytes = Encoding.UTF8.GetBytes(message);
+    using var hmac = new HMACSHA256(keyBytes);
+    var hash = hmac.ComputeHash(msgBytes);
+    return Convert.ToBase64String(hash);
+}</code></pre>
+    </div>
+
+    <!-- Section 5: Message Processing -->
+    <div class="section">
+        <h2>5. การประมวลผลข้อความ (Message Processing)</h2>
+
+        <h3>5.1 กรณี message.type == "text"</h3>
+        <div class="flow-diagram">
+            <div class="flow-box flow-start">ได้ข้อความ เช่น "มีสินค้าอะไรบ้าง"</div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-process">🧠 ส่งข้อความไป OpenRouter AI<br><small>POST https://openrouter.ai/api/v1/chat/completions</small></div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-process">ได้คำตอบจาก AI<br><small>เช่น "ร้านมีปลาตากแห้ง ผลไม้อบแห้ง รองเท้า อาหาร ดอกไม้ครับ"</small></div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-decision">🔍 ตรวจคำสำคัญใน input + AI reply<br><small>ปลา / ผลไม้ / รองเท้า / อาหาร / ดอกไม้</small></div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-process">📎 แนบรูปสินค้าที่เกี่ยวข้อง (จาก Cloudinary)</div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-decision">⚠️ จำกัดข้อความสูงสุด 5 (LINE limit)<br><small>.Take(5)</small></div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-start">📤 Reply กลับไปยัง LINE</div>
+        </div>
+
+        <h3>Code: Text Message Processing + AI</h3>
+        <pre style="background:#1a202c; color:#a0aec0; padding:15px; border-radius:8px; overflow-x:auto; font-size:13px;"><code>case "text":
+    var inputText = message["text"]?.ToString() ?? "";
+
+    // ส่งไปถาม AI
+    var aiReply = await AskAI(orApiKey, orModel, inputText);
+    replyMessages.Add(new { type = "text", text = aiReply });
+
+    // ตรวจคำสำคัญ แนบรูปสินค้า
+    var lowerReply = aiReply.ToLower();
+    var lowerInput = inputText.ToLower();
+
+    if (lowerInput.Contains("ปลา") || lowerReply.Contains("ปลา"))
+    {
+        replyMessages.Add(new {
+            type = "image",
+            originalContentUrl = "https://res.cloudinary.com/.../fish_lydt4m.jpg",
+            previewImageUrl = "https://res.cloudinary.com/.../c_scale,w_240/.../fish_lydt4m.jpg"
+        });
+    }
+    if (lowerInput.Contains("ผลไม้") || lowerReply.Contains("ผลไม้")) { /* แนบรูปผลไม้ */ }
+    if (lowerInput.Contains("รองเท้า") || lowerReply.Contains("รองเท้า")) { /* แนบรูปรองเท้า */ }
+    if (lowerInput.Contains("อาหาร") || lowerReply.Contains("อาหาร")) { /* แนบรูปอาหาร */ }
+    if (lowerInput.Contains("ดอกไม้") || lowerReply.Contains("ดอกไม้")) { /* แนบรูปดอกไม้ */ }
+    break;</code></pre>
+
+        <h3>5.2 กรณี message.type == "sticker"</h3>
+        <pre style="background:#1a202c; color:#a0aec0; padding:15px; border-radius:8px; overflow-x:auto; font-size:13px;"><code>case "sticker":
+    replyMessages.Add(new {
+        type = "sticker",
+        packageId = message["packageId"]?.ToString(),
+        stickerId = message["stickerId"]?.ToString()
+    });
+    break;</code></pre>
+
+        <h3>5.3 กรณีอื่นๆ (image, video, audio, location)</h3>
+        <pre style="background:#1a202c; color:#a0aec0; padding:15px; border-radius:8px; overflow-x:auto; font-size:13px;"><code>default:
+    replyMessages.Add(new {
+        type = "text",
+        text = "ขอโทษครับ ตอนนี้รองรับแค่ข้อความและสติกเกอร์เท่านั้น"
+    });
+    break;</code></pre>
+    </div>
+
+    <!-- Section 6: AI Integration -->
+    <div class="section">
+        <h2>6. การเชื่อมต่อ AI (OpenRouter Integration)</h2>
+        <div class="flow-diagram">
+            <div class="flow-box flow-start">ได้ข้อความจากลูกค้า</div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-process">สร้าง Request<br><small>system prompt (บอก AI ว่าเป็นพนักงานขาย) + user message</small></div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-process">POST → https://openrouter.ai/api/v1/chat/completions<br><small>Header: Authorization: Bearer {API_KEY}</small></div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-decision">สำเร็จ? response.choices[0].message.content</div>
+            <div style="font-size:20px; color:#e53e3e;">❌ Error → "ขอโทษครับ เกิดข้อผิดพลาด..."</div>
+            <div style="font-size:24px; color:#06c755;">⬇ ✅</div>
+            <div class="flow-box flow-start">ส่งคำตอบกลับไป</div>
+        </div>
+
+        <h3>Code: AskAI Function</h3>
+        <pre style="background:#1a202c; color:#a0aec0; padding:15px; border-radius:8px; overflow-x:auto; font-size:13px;"><code>static async Task&lt;string&gt; AskAI(string apiKey, string model, string userMessage)
+{
+    try
+    {
+        using var client = new HttpClient();
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+
+        var payload = new
+        {
+            model = model,
+            messages = new[]
+            {
+                new { role = "system", content = "คุณเป็นผู้ช่วยขายสินค้าออนไลน์ " +
+                    "ร้านมีสินค้า 5 อย่าง: 1) ปลาตากแห้ง 2) ผลไม้อบแห้ง " +
+                    "3) รองเท้า 4) อาหาร 5) ดอกไม้ " +
+                    "ช่วยตอบคำถามลูกค้า แนะนำสินค้า และปิดการขาย " +
+                    "ตอบสั้นกระชับเป็นภาษาไทย" },
+                new { role = "user", content = userMessage }
+            }
+        };
+
+        var jsonContent = new StringContent(
+            JsonConvert.SerializeObject(payload), Encoding.UTF8, "application/json");
+
+        var response = await client.PostAsync(
+            "https://openrouter.ai/api/v1/chat/completions", jsonContent);
+        var result = await response.Content.ReadAsStringAsync();
+
+        var jsonResult = JObject.Parse(result);
+        var reply = jsonResult["choices"]?[0]?["message"]?["content"]?.ToString();
+        return reply ?? "ขอโทษครับ ไม่สามารถตอบได้ในตอนนี้";
+    }
+    catch (Exception ex)
+    {
+        return "ขอโทษครับ เกิดข้อผิดพลาดในการเชื่อมต่อ AI";
+    }
+}</code></pre>
+    </div>
+
+    <!-- Section 7: Reply -->
+    <div class="section">
+        <h2>7. การตอบกลับ LINE (Reply Message)</h2>
+        <div class="flow-diagram">
+            <div class="flow-box flow-start">เตรียม replyMessages[] (สูงสุด 5 ข้อความ)</div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-process">สร้าง JSON: { replyToken, messages }</div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-process">POST → https://api.line.me/v2/bot/message/reply<br><small>Header: Authorization: Bearer {AccessToken}</small></div>
+            <div style="font-size:24px; color:#06c755;">⬇</div>
+            <div class="flow-box flow-start">📱 ลูกค้าเห็นข้อความ + รูปใน LINE</div>
+        </div>
+
+        <h3>Code: ReplyAsync Function</h3>
+        <pre style="background:#1a202c; color:#a0aec0; padding:15px; border-radius:8px; overflow-x:auto; font-size:13px;"><code>static async Task ReplyAsync(string token, string replyToken, List&lt;object&gt; messages)
+{
+    var payload = new { replyToken, messages };
+    var json = JsonConvert.SerializeObject(payload);
+
+    using var client = new HttpClient();
+    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
+    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+    var response = await client.PostAsync(
+        "https://api.line.me/v2/bot/message/reply", content);
+    var result = await response.Content.ReadAsStringAsync();
+    Console.WriteLine($"[Reply] Status={response.StatusCode} Body={result}");
+}
+
+// เรียกใช้ (จำกัด 5 ข้อความ)
+await ReplyAsync(accessToken, replyToken, replyMessages.Take(5).ToList());</code></pre>
+    </div>
+
+    <!-- Section 8: Product Catalog -->
+    <div class="section">
+        <h2>8. รายการสินค้า (Product Catalog)</h2>
+        <table style="width:100%; border-collapse:collapse; margin:15px 0;">
+            <thead>
+                <tr style="background:#06c755; color:#fff;">
+                    <th style="padding:10px; text-align:left;">#</th>
+                    <th style="padding:10px; text-align:left;">สินค้า</th>
+                    <th style="padding:10px; text-align:left;">คำสำคัญ (keyword)</th>
+                    <th style="padding:10px; text-align:left;">URL รูปภาพ (Cloudinary)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="border-bottom:1px solid #e2e8f0;">
+                    <td style="padding:10px;">1</td>
+                    <td style="padding:10px;">ปลาตากแห้ง</td>
+                    <td style="padding:10px;"><code>ปลา</code></td>
+                    <td style="padding:10px; font-size:11px;">https://res.cloudinary.com/cfj5lt9q/image/upload/v1785158052/fish_lydt4m.jpg</td>
+                </tr>
+                <tr style="border-bottom:1px solid #e2e8f0; background:#f7fafc;">
+                    <td style="padding:10px;">2</td>
+                    <td style="padding:10px;">ผลไม้อบแห้ง</td>
+                    <td style="padding:10px;"><code>ผลไม้</code></td>
+                    <td style="padding:10px; font-size:11px;">https://res.cloudinary.com/cfj5lt9q/image/upload/v1785158884/fruits_dclzg8.jpg</td>
+                </tr>
+                <tr style="border-bottom:1px solid #e2e8f0;">
+                    <td style="padding:10px;">3</td>
+                    <td style="padding:10px;">รองเท้า</td>
+                    <td style="padding:10px;"><code>รองเท้า</code></td>
+                    <td style="padding:10px; font-size:11px;">https://res.cloudinary.com/cfj5lt9q/image/upload/v1785157562/cld-sample-5.jpg</td>
+                </tr>
+                <tr style="border-bottom:1px solid #e2e8f0; background:#f7fafc;">
+                    <td style="padding:10px;">4</td>
+                    <td style="padding:10px;">อาหาร</td>
+                    <td style="padding:10px;"><code>อาหาร</code></td>
+                    <td style="padding:10px; font-size:11px;">https://res.cloudinary.com/cfj5lt9q/image/upload/v1785157562/cld-sample-4.jpg</td>
+                </tr>
+                <tr style="border-bottom:1px solid #e2e8f0;">
+                    <td style="padding:10px;">5</td>
+                    <td style="padding:10px;">ดอกไม้</td>
+                    <td style="padding:10px;"><code>ดอกไม้</code></td>
+                    <td style="padding:10px; font-size:11px;">https://res.cloudinary.com/cfj5lt9q/image/upload/v1785157542/sample.jpg</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Section 9: Sequence Diagram -->
+    <div class="section">
+        <h2>9. Sequence Diagram (ลำดับการทำงาน)</h2>
+        <pre style="background:#1a202c; color:#a0aec0; padding:20px; border-radius:8px; overflow-x:auto; font-size:13px; line-height:1.8;">
+ลูกค้า          LINE Platform       Tunnel           Bot Server         OpenRouter AI      Cloudinary
+  |                   |                |                  |                   |                |
+  |-- ส่ง "ขอดูปลา" →|                |                  |                   |                |
+  |                   |-- POST /webhook →                 |                   |                |
+  |                   |                |-- forward -----→ |                   |                |
+  |                   |                |                  |-- verify signature |                |
+  |                   |                |                  |-- ✅ ผ่าน          |                |
+  |                   |                |                  |                   |                |
+  |                   |                |                  |-- POST ask AI ---→|                |
+  |                   |                |                  |   "ขอดูปลา"       |                |
+  |                   |                |                  |←-- AI ตอบ ------  |                |
+  |                   |                |                  |   "ปลาตากแห้ง..." |                |
+  |                   |                |                  |                   |                |
+  |                   |                |                  |-- ตรวจคำ "ปลา"    |                |
+  |                   |                |                  |-- ดึง URL รูป ----|---------------→|
+  |                   |                |                  |                   |    (static URL)|
+  |                   |                |                  |                   |                |
+  |                   |                |                  |-- POST reply --→  |                |
+  |                   |←- reply msg ---|-- forward ←----- |                   |                |
+  |←-- แสดงข้อความ ---|                |                  |                   |                |
+  |    + รูปปลา       |                |                  |                   |                |
+        </pre>
+    </div>
+
+    <!-- Section 10: Running Commands -->
+    <div class="section">
+        <h2>10. คำสั่งที่ใช้ (Commands Summary)</h2>
+        <table style="width:100%; border-collapse:collapse; margin:15px 0;">
+            <thead>
+                <tr style="background:#2d3748; color:#fff;">
+                    <th style="padding:10px; text-align:left;">ลำดับ</th>
+                    <th style="padding:10px; text-align:left;">คำสั่ง</th>
+                    <th style="padding:10px; text-align:left;">หน้าที่</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="border-bottom:1px solid #e2e8f0;">
+                    <td style="padding:10px;">1</td>
+                    <td style="padding:10px;"><code>cd LineBotLocal</code></td>
+                    <td style="padding:10px;">เข้า folder โปรเจค</td>
+                </tr>
+                <tr style="border-bottom:1px solid #e2e8f0; background:#f7fafc;">
+                    <td style="padding:10px;">2</td>
+                    <td style="padding:10px;"><code>dotnet run --urls "http://localhost:5000"</code></td>
+                    <td style="padding:10px;">รัน bot server</td>
+                </tr>
+                <tr style="border-bottom:1px solid #e2e8f0;">
+                    <td style="padding:10px;">3</td>
+                    <td style="padding:10px;"><code>ssh -p 443 -R0:localhost:5000 a.pinggy.io</code></td>
+                    <td style="padding:10px;">เปิด tunnel (terminal ใหม่)</td>
+                </tr>
+                <tr style="border-bottom:1px solid #e2e8f0; background:#f7fafc;">
+                    <td style="padding:10px;">4</td>
+                    <td style="padding:10px;">เอา URL + <code>/webhook</code> ไปใส่ LINE Console</td>
+                    <td style="padding:10px;">เชื่อม webhook</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px;">5</td>
+                    <td style="padding:10px;">กด Verify → Success</td>
+                    <td style="padding:10px;">ทดสอบ → พร้อมใช้งาน</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Section 11: Limitations -->
+    <div class="section">
+        <h2>11. ข้อจำกัด (Limitations)</h2>
+        <ul style="margin-left:20px; line-height:2.2;">
+            <li><strong>Tunnel ฟรี</strong> — หมดอายุทุก 60 นาที (Pinggy) ต้องรันใหม่และอัพเดต Webhook URL</li>
+            <li><strong>LINE Reply limit</strong> — ส่ง reply ได้สูงสุด 5 ข้อความต่อ 1 reply</li>
+            <li><strong>Reply Token</strong> — ใช้ได้ครั้งเดียว ภายใน 1 นาที</li>
+            <li><strong>รูปภาพ</strong> — ต้องเป็น HTTPS, JPEG/PNG, ไม่เกิน 10MB</li>
+            <li><strong>OpenRouter</strong> — ขึ้นอยู่กับ credit ที่มีใน account</li>
+        </ul>
+    </div>
+
+    <div style="text-align:center; color:#999; padding:20px; font-size:13px;">
+        สร้างโดย Kiro AI Assistant | Last Updated: July 2026
+    </div>
+</div>
+</body>
+</html>
